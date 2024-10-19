@@ -38,26 +38,31 @@ from pytorch_lightning.loggers import WandbLogger
 #from lit_gpt import FusedCrossEntropyLoss
 import random
 
-model_name = 'tiny_LLaMA_135M_2k' # model to train
+model_name = 'my_LLaMA_7b' # model to train
 
-name = "tinyllama"
-out_dir = Path("./out") / (name+"_135M_2k")
+name = "my_LLaMA_7b"
+out_dir = Path("./out") / (name+"_custom")
 
 default_seed=3407
 
 # Hyperparameters
-num_nodes=4 #1
-num_of_devices = 8
+mi300a = False
+num_nodes=8 #1
+num_of_devices = 8 #4 #8
+micro_batch_size = 1
+shard_strat = 'FULL_SHARD'
+if mi300a:
+    num_nodes = 2
+    num_of_devices = 4 #8
+    #micro_batch_size *= 2
+    #shard_strat = 'HYBRID_SHARD'
 global_batch_size = 1024/num_nodes
 learning_rate = 6e-4
-micro_batch_size = 32
-if num_of_devices==4: # mi300a
-    micro_batch_size *= 2
 num_epochs=1
 num_total_token_in_b = 670 * num_epochs
 
 warmup_steps = 2000
-log_step_interval = 50
+log_step_interval = 5
 eval_iters = 1000
 save_step_interval = 2000
 eval_step_interval = 2000
@@ -121,11 +126,11 @@ def setup(
         else:
             strategy = FSDPStrategy(
                 auto_wrap_policy={Block},
-                activation_checkpointing_policy=None,
+                activation_checkpointing_policy=None, #{Block}, 
                 state_dict_type="full",
                 limit_all_gathers=True,
                 cpu_offload=False,
-                sharding_strategy='HYBRID_SHARD'
+                sharding_strategy=shard_strat
             )
     else:
         strategy = "auto"

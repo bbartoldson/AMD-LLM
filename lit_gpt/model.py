@@ -23,9 +23,9 @@ from typing import Any, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
-# from lightning_utilities.core.imports import RequirementCache
+#from lightning_utilities.core.imports import RequirementCache
 from typing_extensions import Self
-# from flash_attn import flash_attn_func
+#from flash_attn import flash_attn_func
 from lit_gpt.config import Config
 #from xformers.ops import SwiGLU
 #from .fused_rotary_embedding import apply_rotary_emb_func
@@ -33,8 +33,7 @@ from .rotary_ebm import apply_rotary_pos_emb
 
 RoPECache = Tuple[torch.Tensor, torch.Tensor]
 KVCache = Tuple[torch.Tensor, torch.Tensor]
-# FlashAttention2Available = RequirementCache("flash-attn>=2.0.0.post1")
-
+#FlashAttention2Available = RequirementCache("flash-attn>=2.0.0.post1")
 # input_pos_global = torch.arange(0, 4096, device=torch.device('cuda'))
 #import triton
 #from triton import ops
@@ -298,7 +297,6 @@ class CausalSelfAttention(nn.Module):
             and self.config.enable_flash_attn
             #and q.dtype in (torch.float16, torch.bfloat16)
         ):
-            from flash_attn import flash_attn_func
             return flash_attn_func(q.to(self.config.flash_attn_dtype), k.to(self.config.flash_attn_dtype), v.to(self.config.flash_attn_dtype), dropout_p=0.0, softmax_scale=scale, causal=True).to(v.dtype)
         '''
         q = q.transpose(1, 2)

@@ -13,11 +13,11 @@
 # limitations under the License.
 
 
-source_path=../project_gutenberg
-target_path=../slim_processed
+source_path=/p/vast1/MLdata/project_gutenberg
+target_path=/p/vast1/MLdata/project_gutenberg/processed
 
 # train: 873 secs, ~20G
-tokenizer_path=./scripts/tokenizer
+tokenizer_path=/usr/workspace/bartolds/AMD-Llama-135m
 
 python ./scripts/prepare_project_gutenberg.py \
     --source_path $source_path \
