@@ -20,10 +20,10 @@ firsthost=$(flux getattr hostlist | /bin/hostlist -n 1)
 #firsthost=$(hostname)
 export MASTER_ADDRESS=$firsthost
 #export MAIN_OPRT=25855
-devices=8
-nnodes=8
-export CUDA_VISIBLE_DEVICES='0,1,2,3,4,5,6,7'
-#export CUDA_VISIBLE_DEVICES='0,1,2,3'
+devices=4
+nnodes=2
+#export CUDA_VISIBLE_DEVICES='0,1,2,3,4,5,6,7'
+export CUDA_VISIBLE_DEVICES='0,1,2,3'
 
 echo $MASTER_ADDRESS
 

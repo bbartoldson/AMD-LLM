@@ -38,6 +38,7 @@ from pytorch_lightning.loggers import WandbLogger
 #from lit_gpt import FusedCrossEntropyLoss
 import random
 
+
 model_name = 'my_LLaMA_7b' # model to train
 
 name = "my_LLaMA_7b"
@@ -46,16 +47,16 @@ out_dir = Path("./out") / (name+"_custom")
 default_seed=3407
 
 # Hyperparameters
-mi300a = False
+mi300a = True
 num_nodes=8 #1
 num_of_devices = 8 #4 #8
 micro_batch_size = 1
 shard_strat = 'FULL_SHARD'
 if mi300a:
-    num_nodes = 2
+    num_nodes = 64
     num_of_devices = 4 #8
     #micro_batch_size *= 2
-    #shard_strat = 'HYBRID_SHARD'
+    shard_strat = 'HYBRID_SHARD' #this is usually commented, just testing
 global_batch_size = 1024/num_nodes
 learning_rate = 6e-4
 num_epochs=1
@@ -130,7 +131,8 @@ def setup(
                 state_dict_type="full",
                 limit_all_gathers=True,
                 cpu_offload=False,
-                sharding_strategy=shard_strat
+                sharding_strategy=shard_strat,
+                device_mesh=(32, 8)
             )
     else:
         strategy = "auto"
@@ -174,6 +176,7 @@ def main(fabric, train_data_dir, val_data_dir, resume, model_name=None):
     fabric.print(f"Time to instantiate model: {time.perf_counter() - t0:.02f} seconds.")
     fabric.print(f"Total parameters {num_parameters(model):,}")
 
+    #model = torch.compile(model) - 11/20/24: this appears to give no speed boost. maybe it helps memory - brian
     model = fabric.setup(model)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=learning_rate, weight_decay=weight_decay, betas=(beta1, beta2), foreach=False
