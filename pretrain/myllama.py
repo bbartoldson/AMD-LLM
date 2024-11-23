@@ -37,9 +37,10 @@ from lit_gpt.utils import chunked_cross_entropy, get_default_supported_precision
 from pytorch_lightning.loggers import WandbLogger
 #from lit_gpt import FusedCrossEntropyLoss
 import random
-
+import os
 
 model_name = 'my_LLaMA_7b' # model to train
+block_size = Config.from_name(model_name).block_size
 
 name = "my_LLaMA_7b"
 out_dir = Path("./out") / (name+"_custom")
@@ -47,20 +48,16 @@ out_dir = Path("./out") / (name+"_custom")
 default_seed=3407
 
 # Hyperparameters
-mi300a = True
-num_nodes=8 #1
-num_of_devices = 8 #4 #8
-micro_batch_size = 1
-shard_strat = 'FULL_SHARD'
-if mi300a:
-    num_nodes = 64
-    num_of_devices = 4 #8
-    #micro_batch_size *= 2
-    shard_strat = 'HYBRID_SHARD' #this is usually commented, just testing
+num_nodes = 64
+num_of_devices = 4 #8 for tioga
+shard_strat = 'HYBRID_SHARD' #this is usually commented, just testing
+device_mesh = (num_nodes, num_of_devices)
+micro_batch_size = 8 #1 is needed if not using activation checkpointing
 global_batch_size = 1024/num_nodes
+global_batch_size = 2048/num_nodes
 learning_rate = 6e-4
 num_epochs=1
-num_total_token_in_b = 670 * num_epochs
+num_total_token_in_b = 1000 * num_epochs
 
 warmup_steps = 2000
 log_step_interval = 5
@@ -79,11 +76,11 @@ min_lr = 6e-5
 batch_size = global_batch_size // num_of_devices
 gradient_accumulation_steps = math.ceil(batch_size / micro_batch_size)
 actual_global_batch = gradient_accumulation_steps*micro_batch_size*num_of_devices*num_nodes
-print(actual_global_batch)
-max_step = int(num_total_token_in_b * 10**9/(actual_global_batch*2048)//save_step_interval + 1)*save_step_interval
+max_step = int(num_total_token_in_b * 10**9/(actual_global_batch*block_size)//save_step_interval + 1)*save_step_interval
 assert gradient_accumulation_steps > 0
 warmup_iters = warmup_steps * gradient_accumulation_steps
-
+print('batch size:', actual_global_batch, 'block size:', block_size,
+     'gradient_accumulation_steps:', gradient_accumulation_steps, 'max_step:', max_step )
 
 
 import math
@@ -127,12 +124,12 @@ def setup(
         else:
             strategy = FSDPStrategy(
                 auto_wrap_policy={Block},
-                activation_checkpointing_policy=None, #{Block}, 
+                activation_checkpointing_policy={Block}, 
                 state_dict_type="full",
                 limit_all_gathers=True,
                 cpu_offload=False,
                 sharding_strategy=shard_strat,
-                device_mesh=(32, 8)
+                device_mesh=device_mesh
             )
     else:
         strategy = "auto"
@@ -176,7 +173,7 @@ def main(fabric, train_data_dir, val_data_dir, resume, model_name=None):
     fabric.print(f"Time to instantiate model: {time.perf_counter() - t0:.02f} seconds.")
     fabric.print(f"Total parameters {num_parameters(model):,}")
 
-    #model = torch.compile(model) - 11/20/24: this appears to give no speed boost. maybe it helps memory - brian
+    #model = torch.compile(model) #- 11/20/24: this appears to give no speed boost. maybe it helps memory - brian
     model = fabric.setup(model)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=learning_rate, weight_decay=weight_decay, betas=(beta1, beta2), foreach=False
@@ -263,6 +260,20 @@ def train(fabric, state, train_dataloader, val_dataloader, monitor, resume):
             fabric.backward(loss / gradient_accumulation_steps)
 
         if not is_accumulating:
+            '''
+            try:
+                fabric.print(f"Rank {fabric.global_rank}: Starting grad clip")
+                fabric.clip_gradients(model, optimizer, max_norm=grad_clip)
+                fabric.print(f"Rank {fabric.global_rank}: Starting optimizer step")
+                optimizer.step()
+                fabric.print(f"Rank {fabric.global_rank}: Starting zero grad")
+                optimizer.zero_grad()
+                fabric.print(f"Rank {fabric.global_rank}: Completed optimization step")
+                state["step_count"] += 1
+            except Exception as e:
+                fabric.print(f"Rank {fabric.global_rank}: Failed with error: {str(e)}")
+                raise
+            '''
             fabric.clip_gradients(model, optimizer, max_norm=grad_clip)
             optimizer.step()
             optimizer.zero_grad()
